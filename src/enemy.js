@@ -27,15 +27,70 @@ class Enemy {
         }
     }
 
-    draw(camera) {
+    draw() {
         if (this.spriteSheet && this.animator) {
             const { sx, sy } = this.animator.getCurrentFrame();
             ctx.drawImage(
                 this.spriteSheet,
                 sx, sy, this.width, this.height,
-                this.x - camera.x, this.y - camera.y, this.width, this.height
+                this.x, this.y, this.width, this.height
             );
         }
+    }
+}
+
+class MalinGenie extends Enemy {
+    constructor(x, y, spriteSheet, isIllusion = false) {
+        super(x, y, spriteSheet);
+        this.width = 48;
+        this.height = 48;
+        this.health = 15;
+        this.isIllusion = isIllusion;
+        this.stateTimer = 4000; // 4s
+
+        const animations = {'idle': { row: 0, frames: [0, 1, 2, 3], speed: 150 }};
+        this.animator = new Animator(this.spriteSheet, 48, 48, animations);
+        this.animator.setAnimation('idle');
+    }
+
+    takeDamage(amount) {
+        if (this.isIllusion) {
+            console.log("C'est une illusion !");
+            this.isAlive = false; // L'illusion disparaît
+        } else {
+            super.takeDamage(amount);
+        }
+    }
+
+    update(deltaTime) {
+        if (!this.isIllusion) {
+            this.stateTimer -= deltaTime;
+            if (this.stateTimer <= 0) {
+                this.split();
+                this.stateTimer = 5000; // Prochaine division dans 5s
+            }
+        }
+        super.update(deltaTime);
+    }
+
+    split() {
+        console.log("Le Malin Génie se dédouble !");
+        const room = worldManager.getRoomCoords();
+        for (let i = 0; i < 2; i++) {
+            const x = room.x + Math.random() * (worldManager.roomWidth - this.width);
+            const y = room.y + Math.random() * (worldManager.roomHeight - this.height);
+            const illusion = new MalinGenie(x, y, this.spriteSheet, true);
+            worldManager.enemies.push(illusion);
+        }
+    }
+
+    draw() {
+        // Rendre les illusions semi-transparentes si le compas n'est pas utilisé
+        if (this.isIllusion && !(player.isUsingItem && player.currentItem === 'compass')) {
+            ctx.globalAlpha = 0.5;
+        }
+        super.draw();
+        ctx.globalAlpha = 1.0; // Rétablir l'opacité
     }
 }
 

@@ -4,6 +4,7 @@ const worldManager = {
     enemies: [],
     projectiles: [],
     interactiveObjects: [],
+    npcs: [],
 
     roomWidth: 0,
     roomHeight: 0,
@@ -29,6 +30,8 @@ const worldManager = {
         this.enemies = [];
         this.projectiles = [];
         this.interactiveObjects = [];
+        this.npcs = [];
+
         const objectLayers = this.currentMap.layers.filter(l => l.type === 'objectgroup');
 
         for(const layer of objectLayers) {
@@ -42,9 +45,14 @@ const worldManager = {
                             case 'Sophism': this.enemies.push(new Sophism(obj.x, obj.y, window.globalGameAssets.sophismSheet)); break;
                             case 'Ombre': this.enemies.push(new Ombre(obj.x, obj.y, window.globalGameAssets.ombreSheet)); break;
                             case 'Demiurge': this.enemies.push(new Demiurge(obj.x, obj.y, window.globalGameAssets.demiurgeSheet)); break;
+                            case 'MalinGenie': this.enemies.push(new MalinGenie(obj.x, obj.y, window.globalGameAssets.malinGenieSheet)); break;
                         }
                     } else if (layer.name === 'interactive') {
-                        this.interactiveObjects.push(obj);
+                        if (obj.type === 'Guardian' || obj.type === 'NPC') {
+                            this.npcs.push(obj);
+                        } else {
+                            this.interactiveObjects.push(obj);
+                        }
                     }
                 }
             }
@@ -100,6 +108,10 @@ const worldManager = {
         }
         this.enemies.forEach(enemy => enemy.draw());
         this.projectiles.forEach(p => p.draw());
+        this.npcs.forEach(npc => {
+            const sheet = window.globalGameAssets[`npc${npc.name}Sheet`] || playerSheet; // Fallback
+            ctx.drawImage(sheet, 0, 0, 32, 32, npc.x, npc.y, 32, 32);
+        });
     },
 
     isSolid(x, y) {

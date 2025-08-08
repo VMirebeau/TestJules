@@ -7,7 +7,7 @@ const player = {
     direction: 'down',
     isMoving: false,
     animator: null,
-    currentItem: 'lantern', // Le joueur commence avec la lanterne pour les tests
+    currentItem: 'compass', // Le joueur commence avec le compas pour les tests
     isUsingItem: false,
 
     // États pour le combat

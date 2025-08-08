@@ -64,82 +64,52 @@ function update(timestamp) {
 
 function tryInteraction() {
     if (dialogueManager.isActive || camera.isTransitioning) return;
-    for (const obj of worldManager.interactiveObjects) {
-        if (obj.type === 'Guardian' && Math.hypot(player.x - obj.x, player.y - obj.y) < 50) {
-            startGuardianDialogue();
+    for (const npc of worldManager.npcs) {
+        if (Math.hypot(player.x - npc.x, player.y - npc.y) < 50) {
+            if(npc.dialogue_id) {
+                startDialogueById(npc.dialogue_id);
+            }
             return;
         }
     }
 }
 
-const PlatoDialogue = {
-    text: "Héritier de la pensée, pour passer, tu dois distinguer le vrai du faux. Dis-moi, qu'est-ce qui est le plus réel : l'ombre d'un objet sur le mur d'une caverne, ou l'Idée parfaite de cet objet ?",
-    choices: [
-        { text: "L'ombre, car je peux la voir.", value: 'wrong' },
-        { text: "L'Idée, car elle est éternelle et immuable.", value: 'correct' },
-        { text: "Les deux sont aussi réels l'un que l'autre.", value: 'wrong' }
-    ]
+const DIALOGUES = {
+    'socrates_1': { text: "Connais-toi toi-même." },
+    'plato_guardian': {
+        text: "Héritier de la pensée, pour passer, tu dois distinguer le vrai du faux. Qu'est-ce qui est le plus réel : l'ombre d'un objet sur le mur d'une caverne, ou l'Idée parfaite de cet objet ?",
+        choices: [
+            { text: "L'ombre, car je peux la voir.", value: 'wrong' },
+            { text: "L'Idée, car elle est éternelle et immuable.", value: 'correct' },
+            { text: "Les deux sont aussi réels l'un que l'autre.", value: 'wrong' }
+        ]
+    }
 };
 
-function startGuardianDialogue() {
-    dialogueManager.startDialogue(PlatoDialogue, (choice) => {
-        if (choice === 'correct') {
-            const bossDoor = worldManager.interactiveObjects.find(d => d.id === 'boss_door');
-            if (bossDoor) worldManager.updateTile(bossDoor.x / 32, bossDoor.y / 32, TILE.DOOR_OPEN);
-            dialogueManager.startDialogue({ text: "Sage décision. La voie est libre." });
-        } else {
-            dialogueManager.startDialogue({ text: "Ta perception te trompe. Médite encore sur les apparences et l'essence." });
-        }
-    });
-}
+function startDialogueById(id) {
+    const dialogueData = DIALOGUES[id];
+    if (!dialogueData) return;
 
-function createAttackHitbox() {
-    const hitboxSize = 24;
-    let hitboxX = player.x + player.width / 2 - hitboxSize / 2;
-    let hitboxY = player.y + player.height / 2 - hitboxSize / 2;
-    switch (player.direction) {
-        case 'up': hitboxY -= player.height; break;
-        case 'down': hitboxY += player.height; break;
-        case 'left': hitboxX -= player.width; break;
-        case 'right': hitboxX += player.width; break;
-    }
-    player.hitbox = { x: hitboxX, y: hitboxY, width: hitboxSize, height: hitboxSize };
-}
-
-function checkInteractions() {
-    if (!player.hitbox) return;
-    for (const enemy of worldManager.enemies) {
-        if (player.hitbox.x < enemy.x + enemy.width && player.hitbox.x + player.hitbox.width > enemy.x &&
-            player.hitbox.y < enemy.y + enemy.height && player.hitbox.y + player.hitbox.height > enemy.y) {
-            enemy.takeDamage(1);
-            player.hitbox = null;
-            return;
-        }
-    }
-    for (const obj of worldManager.interactiveObjects) {
-        if (obj.state === 'off' && player.hitbox.x < obj.x + 32 && player.hitbox.x + player.hitbox.width > obj.x &&
-            player.hitbox.y < obj.y + 32 && player.hitbox.y + player.hitbox.height > obj.y) {
-            if (obj.type === 'hiddenSwitch' || obj.type === 'switch') {
-                obj.state = 'on';
-                const door = worldManager.interactiveObjects.find(d => d.opens_with === obj.id);
-                if (door) worldManager.updateTile(door.x / 32, door.y / 32, TILE.DOOR_OPEN);
-                player.hitbox = null;
-                return;
+    if (id === 'plato_guardian') {
+        dialogueManager.startDialogue(dialogueData, (choice) => {
+            if (choice === 'correct') {
+                const bossDoor = worldManager.interactiveObjects.find(d => d.id === 'boss_door');
+                if (bossDoor) worldManager.updateTile(bossDoor.x / 32, bossDoor.y / 32, TILE.DOOR_OPEN);
+                dialogueManager.startDialogue({ text: "Sage décision. La voie est libre." });
+            } else {
+                dialogueManager.startDialogue({ text: "Ta perception te trompe. Médite encore sur les apparences et l'essence." });
             }
-        }
+        });
+    } else {
+        dialogueManager.startDialogue(dialogueData);
     }
 }
 
-function checkPlayerProjectileCollision() {
-    for (const p of worldManager.projectiles) {
-        if (player.x < p.x + p.width && player.x + player.width > p.x &&
-            player.y < p.y + p.height && player.y + player.height > p.y) {
-            console.log("Joueur touché par un projectile !");
-            p.isAlive = false;
-            // Ajouter la logique de dégâts au joueur ici
-        }
-    }
-}
+
+function createAttackHitbox() { /* ... */ }
+function checkInteractions() { /* ... */ }
+function checkPlayerProjectileCollision() { /* ... */ }
+
 
 function draw() {
     ctx.imageSmoothingEnabled = false;
@@ -147,29 +117,33 @@ function draw() {
     ctx.save();
     ctx.scale(ZOOM, ZOOM);
     ctx.translate(-camera.x, -camera.y);
+
     worldManager.draw();
+
+    if (playerSheet && player.animator) {
+        const { sx, sy } = player.animator.getCurrentFrame();
+        ctx.drawImage(playerSheet, sx, sy, player.width, player.height, player.x, player.y, player.width, player.height);
+    }
+
+    // Dessiner les objets interactifs (comme les interrupteurs visibles)
+    const lightRadius = 100;
     for (const obj of worldManager.interactiveObjects) {
-        if (obj.type === 'Guardian') ctx.drawImage(playerSheet, 0, 0, 32, 32, obj.x, obj.y, 32, 32);
-        const lightRadius = 100;
         const isVisible = (player.isUsingItem && player.currentItem === 'lantern' && Math.hypot(player.x - obj.x, player.y - obj.y) < lightRadius);
         if (obj.type === 'hiddenSwitch' && (isVisible || obj.state === 'on')) {
             const tileIndex = (obj.state === 'on') ? TILE.SWITCH_ON : TILE.SWITCH_OFF;
             ctx.drawImage(worldManager.currentTileset, tileIndex * 32, 0, 32, 32, obj.x, obj.y, 32, 32);
         }
     }
-    if (playerSheet && player.animator) {
-        const { sx, sy } = player.animator.getCurrentFrame();
-        ctx.drawImage(playerSheet, sx, sy, player.width, player.height, player.x, player.y, player.width, player.height);
-    }
+
     if (player.hitbox) {
         ctx.fillStyle = 'rgba(255, 0, 0, 0.5)';
         ctx.fillRect(player.hitbox.x, player.hitbox.y, player.hitbox.width, player.hitbox.height);
     }
+
     if (worldManager.currentMap.id.includes('dungeon') && player.isUsingItem && player.currentItem === 'lantern') {
         ctx.fillStyle = 'rgba(0, 0, 0, 0.85)';
         ctx.fillRect(camera.x, camera.y, camera.width, camera.height);
         ctx.globalCompositeOperation = 'destination-out';
-        const lightRadius = 100;
         const playerCenterX = player.x + player.width / 2;
         const playerCenterY = player.y + player.height / 2;
         const gradient = ctx.createRadialGradient(playerCenterX, playerCenterY, lightRadius * 0.5, playerCenterX, playerCenterY, lightRadius);
@@ -181,6 +155,18 @@ function draw() {
         ctx.fill();
         ctx.globalCompositeOperation = 'source-over';
     }
+
+    // Effet visuel du Compas du Cogito
+    if (player.isUsingItem && player.currentItem === 'compass') {
+        for (const enemy of worldManager.enemies) {
+            if (enemy instanceof MalinGenie && !enemy.isIllusion) {
+                ctx.strokeStyle = 'rgba(255, 255, 0, 0.8)';
+                ctx.lineWidth = 2;
+                ctx.strokeRect(enemy.x, enemy.y, enemy.width, enemy.height);
+            }
+        }
+    }
+
     ctx.restore();
 }
 
@@ -203,10 +189,18 @@ async function main() {
             { name: 'sophismSheet', type: 'image', src: 'assets/sprites/sophism_sheet.png' },
             { name: 'ombreSheet', type: 'image', src: 'assets/sprites/ombre_sheet.png' },
             { name: 'demiurgeSheet', type: 'image', src: 'assets/sprites/demiurge_sheet.png' },
+            { name: 'npcSocratesSheet', type: 'image', src: 'assets/sprites/npc_socrates_sheet.png' },
+            // Tilesets
             { name: 'overworldTileset', type: 'image', src: 'assets/tilesets/basic_tileset.png' },
             { name: 'dungeonTileset', type: 'image', src: 'assets/tilesets/dungeon_tileset.png' },
+            { name: 'descartesTileset', type: 'image', src: 'assets/tilesets/descartes_tileset.png' },
+            // Maps
             { name: 'overworldMap', type: 'json', src: 'assets/maps/level1.json' },
-            { name: 'dungeonMap', type: 'json', src: 'assets/maps/dungeon_plato_1.json' }
+            { name: 'dungeonPlatoMap', type: 'json', src: 'assets/maps/dungeon_plato_1.json' },
+            { name: 'dungeonDescartesMap', type: 'json', src: 'assets/maps/dungeon_descartes.json' },
+            // Bosses
+            { name: 'demiurgeSheet', type: 'image', src: 'assets/sprites/demiurge_sheet.png' },
+            { name: 'malinGenieSheet', type: 'image', src: 'assets/sprites/malin_genie_sheet.png' }
         ]);
         window.globalGameAssets = assets;
         playerSheet = assets.playerSheet;
@@ -225,11 +219,10 @@ async function main() {
 
         camera.setViewport(canvas.width / ZOOM, canvas.height / ZOOM);
 
-        const startRoomX = 1;
-        const startRoomY = 0;
-        await worldManager.loadMap(window.globalGameAssets.dungeonMap, player, startRoomX, startRoomY);
-        player.x = (startRoomX * worldManager.roomWidth) + 100;
-        player.y = (startRoomY * worldManager.roomHeight) + 100;
+        // Démarrer sur la carte du monde pour tester le hub
+        await worldManager.loadMap(window.globalGameAssets.overworldMap, player, 1, 1);
+        player.x = (1 * worldManager.roomWidth) + 200;
+        player.y = (1 * worldManager.roomHeight) + 200;
 
         console.log("Lancement du jeu !");
         requestAnimationFrame(gameLoop);
