@@ -126,13 +126,13 @@ async function main() {
         // Initialiser l'animateur du joueur
         const playerAnimations = {
             'idle_down':  { row: 0, frames: [0], speed: 1000 },
-            'walk_down':  { row: 0, frames: [0, 1], speed: 200 },
+            'walk_down':  { row: 0, frames: [0, 1, 2, 3], speed: 150 },
             'idle_up':    { row: 1, frames: [0], speed: 1000 },
-            'walk_up':    { row: 1, frames: [0, 1], speed: 200 },
+            'walk_up':    { row: 1, frames: [0, 1, 2, 3], speed: 150 },
             'idle_left':  { row: 2, frames: [0], speed: 1000 },
-            'walk_left':  { row: 2, frames: [0, 1], speed: 200 },
+            'walk_left':  { row: 2, frames: [0, 1, 2, 3], speed: 150 },
             'idle_right': { row: 3, frames: [0], speed: 1000 },
-            'walk_right': { row: 3, frames: [0, 1], speed: 200 },
+            'walk_right': { row: 3, frames: [0, 1, 2, 3], speed: 150 },
         };
         player.animator = new Animator(
             gameAssets.playerSheet,
