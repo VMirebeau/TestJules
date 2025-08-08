@@ -1,30 +1,52 @@
 const camera = {
     x: 0,
     y: 0,
-    width: 800, // canvas.width
-    height: 600, // canvas.height
+    width: 0,
+    height: 0,
+    zoom: 2,
 
-    // Met à jour la caméra pour la centrer sur le joueur
-    update(player, map) {
-        // Centre la caméra sur le joueur
-        this.x = player.x - this.width / 2 + player.width / 2;
-        this.y = player.y - this.height / 2 + player.height / 2;
+    isTransitioning: false,
+    targetX: 0,
+    targetY: 0,
+    panSpeed: 10, // Vitesse de transition de la caméra
 
-        // Bloque la caméra aux bords de la carte
-        const mapWidthPixels = map.width * map.tilewidth;
-        const mapHeightPixels = map.height * map.tileheight;
+    // Définit la taille logique de la caméra
+    setViewport(width, height) {
+        this.width = width;
+        this.height = height;
+    },
 
-        if (this.x < 0) {
-            this.x = 0;
-        }
-        if (this.y < 0) {
-            this.y = 0;
-        }
-        if (this.x + this.width > mapWidthPixels) {
-            this.x = mapWidthPixels - this.width;
-        }
-        if (this.y + this.height > mapHeightPixels) {
-            this.y = mapHeightPixels - this.height;
+    // Positionne la caméra instantanément
+    snapTo(x, y) {
+        this.x = x;
+        this.y = y;
+        this.targetX = x;
+        this.targetY = y;
+    },
+
+    // Lance une transition vers une nouvelle position
+    panTo(targetX, targetY) {
+        this.targetX = targetX;
+        this.targetY = targetY;
+        this.isTransitioning = true;
+    },
+
+    // Met à jour la position de la caméra (pour les transitions)
+    update() {
+        if (this.isTransitioning) {
+            const dx = this.targetX - this.x;
+            const dy = this.targetY - this.y;
+
+            // Si on est très proche de la cible, on s'y place directement
+            if (Math.abs(dx) < this.panSpeed && Math.abs(dy) < this.panSpeed) {
+                this.x = this.targetX;
+                this.y = this.targetY;
+                this.isTransitioning = false;
+            } else {
+                // Interpolation linéaire simple
+                this.x += dx / this.panSpeed;
+                this.y += dy / this.panSpeed;
+            }
         }
     }
 };

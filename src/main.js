@@ -1,158 +1,240 @@
+const ZOOM = 2;
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
 
 const keys = {
-    ArrowUp: false,
-    ArrowDown: false,
-    ArrowLeft: false,
-    ArrowRight: false
+    ArrowUp: false, ArrowDown: false, ArrowLeft: false, ArrowRight: false,
+    KeyX: false, KeyC: false, KeyE: false
 };
 
-let gameAssets = {};
+let playerSheet;
+window.globalGameAssets = {};
+let lastTime = 0;
 
-const assetsToLoad = [
-    { name: 'playerSheet', type: 'image', src: 'assets/sprites/player_sheet.png' },
-    { name: 'tileset', type: 'image', src: 'assets/tilesets/basic_tileset.png' },
-    { name: 'level1', type: 'json', src: 'assets/maps/level1.json' }
-];
+const TILE = { FLOOR: 0, WALL: 1, DOOR_CLOSED: 2, DOOR_OPEN: 3, SWITCH_OFF: 4, SWITCH_ON: 5 };
 
-// --- Fonctions de jeu ---
-
-function checkCollision(x, y) {
-    // Vérifie les 4 coins du rectangle du joueur
-    const corners = [
-        { x: x, y: y },
-        { x: x + player.width - 1, y: y },
-        { x: x, y: y + player.height - 1 },
-        { x: x + player.width - 1, y: y + player.height - 1 }
-    ];
-
-    for (const corner of corners) {
-        if (isSolidTile(corner.x, corner.y, gameAssets.level1)) {
-            return true;
-        }
+function handlePlayerInput() {
+    if (camera.isTransitioning || player.isAttacking || dialogueManager.isActive) {
+        player.isMoving = false;
+        return;
     }
-    return false;
-}
-
-function update() {
+    player.isMoving = false;
     let nextX = player.x;
     let nextY = player.y;
-    player.isMoving = false;
+    if (keys.ArrowUp) { nextY -= player.speed; player.direction = 'up'; player.isMoving = true; }
+    if (keys.ArrowDown) { nextY += player.speed; player.direction = 'down'; player.isMoving = true; }
+    if (keys.ArrowLeft) { nextX -= player.speed; player.direction = 'left'; player.isMoving = true; }
+    if (keys.ArrowRight) { nextX += player.speed; player.direction = 'right'; player.isMoving = true; }
+    if (nextX !== player.x && !worldManager.isSolid(nextX, player.y)) player.x = nextX;
+    if (nextY !== player.y && !worldManager.isSolid(player.x, nextY)) player.y = nextY;
+}
 
-    // Calculer le prochain mouvement et définir la direction
-    if (keys.ArrowUp) {
-        nextY -= player.speed;
-        player.direction = 'up';
-        player.isMoving = true;
-    }
-    if (keys.ArrowDown) {
-        nextY += player.speed;
-        player.direction = 'down';
-        player.isMoving = true;
-    }
-    if (keys.ArrowLeft) {
-        nextX -= player.speed;
-        player.direction = 'left';
-        player.isMoving = true;
-    }
-    if (keys.ArrowRight) {
-        nextX += player.speed;
-        player.direction = 'right';
-        player.isMoving = true;
+function update(timestamp) {
+    if (!lastTime) lastTime = timestamp;
+    const deltaTime = timestamp - lastTime;
+    lastTime = timestamp;
+
+    if (!worldManager.currentMap || dialogueManager.isActive) {
+        camera.update(deltaTime);
+        return;
     }
 
-    // Gérer les collisions
-    if (nextX !== player.x && !checkCollision(nextX, player.y)) {
-        player.x = nextX;
-    }
-    if (nextY !== player.y && !checkCollision(player.x, nextY)) {
-        player.y = nextY;
+    handlePlayerInput();
+
+    if (player.isAttacking) {
+        player.attackTimer -= deltaTime;
+        if (player.attackTimer < player.attackDuration / 2 && !player.hitbox) {
+            createAttackHitbox();
+            checkInteractions();
+        }
+        if (player.attackTimer <= 0) { player.isAttacking = false; player.hitbox = null; }
     }
 
-    // Mettre à jour l'animation
-    const anim_prefix = player.isMoving ? 'walk_' : 'idle_';
+    const anim_prefix = player.isAttacking ? 'attack_' : (player.isMoving ? 'walk_' : 'idle_');
     player.animator.setAnimation(anim_prefix + player.direction);
-    player.animator.update();
+    player.animator.update(deltaTime);
 
-    // Mettre à jour la caméra
-    camera.update(player, gameAssets.level1);
+    worldManager.update(deltaTime);
+    if (!camera.isTransitioning) {
+        worldManager.checkForRoomTransition(player);
+        checkPlayerProjectileCollision();
+    }
+    camera.update(deltaTime);
+}
+
+function tryInteraction() {
+    if (dialogueManager.isActive || camera.isTransitioning) return;
+    for (const obj of worldManager.interactiveObjects) {
+        if (obj.type === 'Guardian' && Math.hypot(player.x - obj.x, player.y - obj.y) < 50) {
+            startGuardianDialogue();
+            return;
+        }
+    }
+}
+
+const PlatoDialogue = {
+    text: "Héritier de la pensée, pour passer, tu dois distinguer le vrai du faux. Dis-moi, qu'est-ce qui est le plus réel : l'ombre d'un objet sur le mur d'une caverne, ou l'Idée parfaite de cet objet ?",
+    choices: [
+        { text: "L'ombre, car je peux la voir.", value: 'wrong' },
+        { text: "L'Idée, car elle est éternelle et immuable.", value: 'correct' },
+        { text: "Les deux sont aussi réels l'un que l'autre.", value: 'wrong' }
+    ]
+};
+
+function startGuardianDialogue() {
+    dialogueManager.startDialogue(PlatoDialogue, (choice) => {
+        if (choice === 'correct') {
+            const bossDoor = worldManager.interactiveObjects.find(d => d.id === 'boss_door');
+            if (bossDoor) worldManager.updateTile(bossDoor.x / 32, bossDoor.y / 32, TILE.DOOR_OPEN);
+            dialogueManager.startDialogue({ text: "Sage décision. La voie est libre." });
+        } else {
+            dialogueManager.startDialogue({ text: "Ta perception te trompe. Médite encore sur les apparences et l'essence." });
+        }
+    });
+}
+
+function createAttackHitbox() {
+    const hitboxSize = 24;
+    let hitboxX = player.x + player.width / 2 - hitboxSize / 2;
+    let hitboxY = player.y + player.height / 2 - hitboxSize / 2;
+    switch (player.direction) {
+        case 'up': hitboxY -= player.height; break;
+        case 'down': hitboxY += player.height; break;
+        case 'left': hitboxX -= player.width; break;
+        case 'right': hitboxX += player.width; break;
+    }
+    player.hitbox = { x: hitboxX, y: hitboxY, width: hitboxSize, height: hitboxSize };
+}
+
+function checkInteractions() {
+    if (!player.hitbox) return;
+    for (const enemy of worldManager.enemies) {
+        if (player.hitbox.x < enemy.x + enemy.width && player.hitbox.x + player.hitbox.width > enemy.x &&
+            player.hitbox.y < enemy.y + enemy.height && player.hitbox.y + player.hitbox.height > enemy.y) {
+            enemy.takeDamage(1);
+            player.hitbox = null;
+            return;
+        }
+    }
+    for (const obj of worldManager.interactiveObjects) {
+        if (obj.state === 'off' && player.hitbox.x < obj.x + 32 && player.hitbox.x + player.hitbox.width > obj.x &&
+            player.hitbox.y < obj.y + 32 && player.hitbox.y + player.hitbox.height > obj.y) {
+            if (obj.type === 'hiddenSwitch' || obj.type === 'switch') {
+                obj.state = 'on';
+                const door = worldManager.interactiveObjects.find(d => d.opens_with === obj.id);
+                if (door) worldManager.updateTile(door.x / 32, door.y / 32, TILE.DOOR_OPEN);
+                player.hitbox = null;
+                return;
+            }
+        }
+    }
+}
+
+function checkPlayerProjectileCollision() {
+    for (const p of worldManager.projectiles) {
+        if (player.x < p.x + p.width && player.x + player.width > p.x &&
+            player.y < p.y + p.height && player.y + player.height > p.y) {
+            console.log("Joueur touché par un projectile !");
+            p.isAlive = false;
+            // Ajouter la logique de dégâts au joueur ici
+        }
+    }
 }
 
 function draw() {
+    ctx.imageSmoothingEnabled = false;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.save();
+    ctx.scale(ZOOM, ZOOM);
     ctx.translate(-camera.x, -camera.y);
-
-    if (gameAssets.level1 && gameAssets.tileset) {
-        drawMap(gameAssets.level1, gameAssets.tileset, camera);
+    worldManager.draw();
+    for (const obj of worldManager.interactiveObjects) {
+        if (obj.type === 'Guardian') ctx.drawImage(playerSheet, 0, 0, 32, 32, obj.x, obj.y, 32, 32);
+        const lightRadius = 100;
+        const isVisible = (player.isUsingItem && player.currentItem === 'lantern' && Math.hypot(player.x - obj.x, player.y - obj.y) < lightRadius);
+        if (obj.type === 'hiddenSwitch' && (isVisible || obj.state === 'on')) {
+            const tileIndex = (obj.state === 'on') ? TILE.SWITCH_ON : TILE.SWITCH_OFF;
+            ctx.drawImage(worldManager.currentTileset, tileIndex * 32, 0, 32, 32, obj.x, obj.y, 32, 32);
+        }
     }
-
-    // Dessiner le joueur avec la bonne frame d'animation
-    if (gameAssets.playerSheet && player.animator) {
+    if (playerSheet && player.animator) {
         const { sx, sy } = player.animator.getCurrentFrame();
-        ctx.drawImage(
-            gameAssets.playerSheet,
-            sx, sy, player.width, player.height, // Source rectangle
-            player.x, player.y, player.width, player.height  // Destination rectangle
-        );
+        ctx.drawImage(playerSheet, sx, sy, player.width, player.height, player.x, player.y, player.width, player.height);
     }
-
+    if (player.hitbox) {
+        ctx.fillStyle = 'rgba(255, 0, 0, 0.5)';
+        ctx.fillRect(player.hitbox.x, player.hitbox.y, player.hitbox.width, player.hitbox.height);
+    }
+    if (worldManager.currentMap.id.includes('dungeon') && player.isUsingItem && player.currentItem === 'lantern') {
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.85)';
+        ctx.fillRect(camera.x, camera.y, camera.width, camera.height);
+        ctx.globalCompositeOperation = 'destination-out';
+        const lightRadius = 100;
+        const playerCenterX = player.x + player.width / 2;
+        const playerCenterY = player.y + player.height / 2;
+        const gradient = ctx.createRadialGradient(playerCenterX, playerCenterY, lightRadius * 0.5, playerCenterX, playerCenterY, lightRadius);
+        gradient.addColorStop(0, 'rgba(0, 0, 0, 1)');
+        gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
+        ctx.fillStyle = gradient;
+        ctx.beginPath();
+        ctx.arc(playerCenterX, playerCenterY, lightRadius, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.globalCompositeOperation = 'source-over';
+    }
     ctx.restore();
 }
 
-function gameLoop() {
-    update();
-    draw();
-    requestAnimationFrame(gameLoop);
-}
-
-// --- Initialisation et lancement ---
+function gameLoop(timestamp) { update(timestamp); draw(); requestAnimationFrame(gameLoop); }
 
 window.addEventListener('keydown', (e) => {
-    if (e.key in keys) keys[e.key] = true;
+    e.preventDefault();
+    if (e.code === 'KeyX') player.isUsingItem = !player.isUsingItem;
+    if (e.code === 'KeyC' && !player.isAttacking && !camera.isTransitioning) { player.isAttacking = true; player.attackTimer = player.attackDuration; }
+    if (e.code === 'KeyE') tryInteraction();
+    if (keys.hasOwnProperty(e.code)) keys[e.code] = true;
 });
-
-window.addEventListener('keyup', (e) => {
-    if (e.key in keys) keys[e.key] = false;
-});
+window.addEventListener('keyup', (e) => { e.preventDefault(); if (keys.hasOwnProperty(e.code)) keys[e.code] = false; });
 
 async function main() {
-    console.log("Chargement des assets...");
+    console.log("Chargement des assets globaux...");
     try {
-        gameAssets = await loadAssets(assetsToLoad);
-        console.log("Assets chargés avec succès !", gameAssets);
+        const assets = await loadAssets([
+            { name: 'playerSheet', type: 'image', src: 'assets/sprites/player_sheet.png' },
+            { name: 'sophismSheet', type: 'image', src: 'assets/sprites/sophism_sheet.png' },
+            { name: 'ombreSheet', type: 'image', src: 'assets/sprites/ombre_sheet.png' },
+            { name: 'demiurgeSheet', type: 'image', src: 'assets/sprites/demiurge_sheet.png' },
+            { name: 'overworldTileset', type: 'image', src: 'assets/tilesets/basic_tileset.png' },
+            { name: 'dungeonTileset', type: 'image', src: 'assets/tilesets/dungeon_tileset.png' },
+            { name: 'overworldMap', type: 'json', src: 'assets/maps/level1.json' },
+            { name: 'dungeonMap', type: 'json', src: 'assets/maps/dungeon_plato_1.json' }
+        ]);
+        window.globalGameAssets = assets;
+        playerSheet = assets.playerSheet;
 
-        // Initialiser l'animateur du joueur
         const playerAnimations = {
-            'idle_down':  { row: 0, frames: [0], speed: 1000 },
-            'walk_down':  { row: 0, frames: [0, 1, 2, 3], speed: 150 },
-            'idle_up':    { row: 1, frames: [0], speed: 1000 },
-            'walk_up':    { row: 1, frames: [0, 1, 2, 3], speed: 150 },
-            'idle_left':  { row: 2, frames: [0], speed: 1000 },
-            'walk_left':  { row: 2, frames: [0, 1, 2, 3], speed: 150 },
-            'idle_right': { row: 3, frames: [0], speed: 1000 },
-            'walk_right': { row: 3, frames: [0, 1, 2, 3], speed: 150 },
+            'idle_down':  { row: 0, frames: [0], speed: 1000 }, 'walk_down':  { row: 0, frames: [0, 1, 2, 3], speed: 150 },
+            'idle_up':    { row: 1, frames: [0], speed: 1000 }, 'walk_up':    { row: 1, frames: [0, 1, 2, 3], speed: 150 },
+            'idle_left':  { row: 2, frames: [0], speed: 1000 }, 'walk_left':  { row: 2, frames: [0, 1, 2, 3], speed: 150 },
+            'idle_right': { row: 3, frames: [0], speed: 1000 }, 'walk_right': { row: 3, frames: [0, 1, 2, 3], speed: 150 },
+            'attack_down':{ row: 4, frames: [0], speed: player.attackDuration },
+            'attack_up':  { row: 4, frames: [1], speed: player.attackDuration },
+            'attack_left':{ row: 4, frames: [2], speed: player.attackDuration },
+            'attack_right':{ row: 4, frames: [3], speed: player.attackDuration },
         };
-        player.animator = new Animator(
-            gameAssets.playerSheet,
-            32, // frame width
-            32, // frame height
-            playerAnimations
-        );
+        player.animator = new Animator(playerSheet, 32, 32, playerAnimations);
 
-        // La taille du joueur est définie par la taille d'une frame d'animation
-        player.width = 32;
-        player.height = 32;
+        camera.setViewport(canvas.width / ZOOM, canvas.height / ZOOM);
+
+        const startRoomX = 1;
+        const startRoomY = 0;
+        await worldManager.loadMap(window.globalGameAssets.dungeonMap, player, startRoomX, startRoomY);
+        player.x = (startRoomX * worldManager.roomWidth) + 100;
+        player.y = (startRoomY * worldManager.roomHeight) + 100;
 
         console.log("Lancement du jeu !");
-        gameLoop();
+        requestAnimationFrame(gameLoop);
     } catch (error) {
-        console.error("Erreur lors du chargement des assets:", error);
-        // Afficher un message d'erreur sur le canvas
-        ctx.fillStyle = 'red';
-        ctx.font = '20px sans-serif';
-        ctx.fillText("Erreur: Impossible de charger les ressources du jeu.", 20, 50);
+        console.error("Erreur lors de l'initialisation:", error);
     }
 }
 
