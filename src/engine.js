@@ -30,21 +30,22 @@ function drawMap(mapData, tileset, camera) {
             const canvasX = x * tilewidth;
             const canvasY = y * tileheight;
 
-        // Position de la tuile dans le tileset (en pixels)
-        const tilesetX = (tileValue % (tileset.width / tilewidth)) * tilewidth;
-        const tilesetY = Math.floor(tileValue / (tileset.width / tilewidth)) * tileheight;
+            // Position de la tuile dans le tileset (en pixels)
+            const tilesetX = (tileValue % (tileset.width / tilewidth)) * tilewidth;
+            const tilesetY = Math.floor(tileValue / (tileset.width / tilewidth)) * tileheight;
 
-        ctx.drawImage(
-            tileset,      // L'image du tileset
-            tilesetX,     // Coordonnée X de la tuile source
-            tilesetY,     // Coordonnée Y de la tuile source
-            tilewidth,    // Largeur de la tuile source
-            tileheight,   // Hauteur de la tuile source
-            canvasX,      // Coordonnée X de destination sur le canvas
-            canvasY,      // Coordonnée Y de destination sur le canvas
-            tilewidth,    // Largeur de la tuile de destination
-            tileheight    // Hauteur de la tuile de destination
-        );
+            ctx.drawImage(
+                tileset,      // L'image du tileset
+                tilesetX,     // Coordonnée X de la tuile source
+                tilesetY,     // Coordonnée Y de la tuile source
+                tilewidth,    // Largeur de la tuile source
+                tileheight,   // Hauteur de la tuile source
+                canvasX,      // Coordonnée X de destination sur le canvas
+                canvasY,      // Coordonnée Y de destination sur le canvas
+                tilewidth,    // Largeur de la tuile de destination
+                tileheight    // Hauteur de la tuile de destination
+            );
+        }
     }
 }
 
